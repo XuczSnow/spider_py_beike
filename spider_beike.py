@@ -22,6 +22,7 @@ def get_bc(page = ''):
     }
 
     url_title = 'https://xa.zu.ke.com/'
+    # 如果需要查询别的地区的房子，直接改这个就行
     url = 'https://xa.zu.ke.com/ditiezufang/li38000009046408s38000009046433/'+page
 
     response = requests.get(url, headers=headers)
