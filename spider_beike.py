@@ -1,19 +1,24 @@
+# from cgi import print_arguments
 import os
 import re
-import pymysql
+# import pymysql
 from urllib import request
 from bs4 import BeautifulSoup
 import requests
 import time
+import csv
 
-host = 'localhost'
-port = 3306
-db = 'xianzufang'
-user = 'root'
-password = '961013zxc'
+page_num = 9
+url_base = 'https://bj.zu.ke.com/ditiezufang/li46537785s46538264/'
 
-# 连接数据库
-db = pymysql.connect(host=host, port=port, db=db, user=user, password=password)
+# host = 'localhost'
+# port = 3306
+# db = 'xianzufang'
+# user = 'root'
+# password = '961013zxc'
+
+# # 连接数据库
+# db = pymysql.connect(host=host, port=port, db=db, user=user, password=password)
 
 def get_bc(page = ''):
     # 获取网页源码
@@ -23,7 +28,7 @@ def get_bc(page = ''):
 
     url_title = 'https://xa.zu.ke.com/'
     # 如果需要查询别的地区的房子，直接改这个就行
-    url = 'https://xa.zu.ke.com/ditiezufang/li38000009046408s38000009046433/'+page
+    url = url_base + page
 
     response = requests.get(url, headers=headers)
 
@@ -33,11 +38,19 @@ def get_bc(page = ''):
     # 遍历一个页面的所有房源信息
     for fang in res_fang:
         # 获取基础信息
+            #  通过社区信息判断是不是为广告
+        des = fang.find('div', class_='content__list--item--main').find('p', class_='content__list--item--des')
+        des_ad = des.find('span', class_='room__left')
+        print(des_ad)
+        if des_ad != None:
+            break
+        des_text = des.find_all('a')
+        des_community = des_text[2].get_text()
+
+        
         title = fang.find('div', class_='content__list--item--main').find('p', class_='content__list--item--title')
         title_url = url_title + title.find('a').get('href')
         title_name = title.find('a').get_text()[11:26]
-        des = fang.find('div', class_='content__list--item--main').find('p', class_='content__list--item--des').find_all('a')
-        des_community = des[2].get_text()
         price = fang.find('div', class_='content__list--item--main').find('span', class_='content__list--item-price').find('em').get_text()
         date = fang.find('div', class_='content__list--item--main').find('p', class_='content__list--item--brand oneline')\
             .find('span', class_='content__list--item--time oneline').get_text()
@@ -65,29 +78,55 @@ def get_bc(page = ''):
         print(info_method, info_style, info_area, info_decoration, info_direction, info_floor)
 
         # 获取房源图片
+        title_name = title_name.replace('·', '-')
         img_dir = './img/'+title_name+'/'
         os.makedirs(img_dir, exist_ok=True)
-        img_buf = res_fang_soup.find('ul', class_='content__article__slide__wrapper').find_all('div', class_='content__article__slide__item')
+        # 获取图片链接（旧版，获取不到图片）
+        # img_buf = res_fang_soup.find('ul', class_='content__article__slide__wrapper').find_all('div', class_='content__article__slide__item')
+        # img_cnt = 0
+        # for img_url in img_buf:
+        #     img_url = img_url.find('img').get('src')
+        #     with open(img_dir+str(img_cnt)+'.jpg', 'wb') as f:
+        #         f.write(request.urlopen(img_url).read())
+        #         f.close()
+        #     print(img_url)
+        #     img_cnt += 1
+
+        # 获取图片链接（新版）
+        img_buf = res_fang_soup.find('ul', class_='content__article__slide--small content__article__slide_dot').find_all('li', class_='')
+        # print(img_buf)
         img_cnt = 0
+        img_fix = '!m_fill,w_780,h_439,l_fbk,o_auto'
         for img_url in img_buf:
-            img_url = img_url.find('img').get('src')
+            img_url_buf = img_url.find('img').get('src')
+            img_url_buf = img_url_buf.split('!')
+            img_url = img_url_buf[0]+img_fix
             with open(img_dir+str(img_cnt)+'.jpg', 'wb') as f:
-                f.write(request.urlopen(img_url).read())
+                try:
+                    res = request.urlopen(img_url)
+                except:
+                    continue
+                f.write(res.read())
                 f.close()
-            print(img_url)
             img_cnt += 1
         
         # 数据库写入
-        cur = db.cursor()
-        sql = 'INSERT INTO info(url, name, community, price, date, method, style, area, decoration, direction, floor, img_dir) ' \
-                       'VALUES ("%s","%s", "%s",      "%f",  "%s", "%s",   "%s",  "%f", "%s",       "%s",      "%s",  "%s")' % \
-            (title_url, title_name, des_community, float(price), date, info_method, info_style, float(info_area[:-2]), info_decoration, info_direction, info_floor, img_dir)
-        cur.execute(sql)
-        db.commit()
+        # cur = db.cursor()
+        # sql = 'INSERT INTO info(url, name, community, price, date, method, style, area, decoration, direction, floor, img_dir) ' \
+        #                'VALUES ("%s","%s", "%s",      "%f",  "%s", "%s",   "%s",  "%f", "%s",       "%s",      "%s",  "%s")' % \
+        #     (title_url, title_name, des_community, float(price), date, info_method, info_style, float(info_area[:-2]), info_decoration, info_direction, info_floor, img_dir)
+        # cur.execute(sql)
+        # db.commit()
         # break
+
+        # csv写入
+        with open('info.csv', 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([title_url, title_name, des_community, price, date, info_method, info_style, info_area, info_decoration, info_direction, info_floor, img_dir])
+
     time.sleep(1)
 
-for i in range (14):
+for i in range (page_num):
     if i == 0:
         page = ''
     else:
